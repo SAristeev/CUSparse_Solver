@@ -3,12 +3,12 @@
 void testResidualSpMV(const int rowsA, const int nnzA,
     const int* h_RowPtrA, const int* h_ColIndA, const double* h_ValA,
     const int rowsB, const double* h_B,
-    const int colsA, double* h_X) {
-
+    const int colsA, double* h_X, FILE* log) {
+    
     int* d_RowPtrA, * d_ColIndA;
     double* d_ValA, * d_B, * d_X;
     double alpha = 1.0, beta = -1.0;
-    double startAll, stopAll, elapsedAllTime, startSolve, stopSolve, elapsedSolveTime;
+    double startAll, stopAll;
 
     startAll = second();
 
@@ -52,8 +52,6 @@ void testResidualSpMV(const int rowsA, const int nnzA,
 // CUSAPRSE Analysis + Multiply
 //==========================================================================
 
-    startSolve = second();
-
     CHECK_CUSPARSE(cusparseSpMV_bufferSize(handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
                                            &alpha, matA, vecX, &beta, vecB, CUDA_R_64F,
                                            CUSPARSE_MV_ALG_DEFAULT, &bufferSize))
@@ -61,7 +59,6 @@ void testResidualSpMV(const int rowsA, const int nnzA,
     CHECK_CUSPARSE(cusparseSpMV(handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
                                 &alpha, matA, vecX, &beta, vecB, CUDA_R_64F,
                                 CUSPARSE_MV_ALG_DEFAULT, dBuffer))
-    stopSolve = second();
 
 //==========================================================================
 // CUSAPRSE APIs destroy
@@ -84,8 +81,6 @@ void testResidualSpMV(const int rowsA, const int nnzA,
     CHECK_CUDA(cudaFree(d_B))
     CHECK_CUDA(cudaFree(d_X))
     stopAll = second();
-    elapsedAllTime = stopAll - startAll;
-    elapsedSolveTime = stopSolve - startSolve;
-    printf("All CUDA   A*X - B timing: = %10.6f sec\n", elapsedAllTime);
-    printf("Solve CUDA A*X - B timing: = %10.6f sec\n", elapsedSolveTime);
+    
+    fprintf(log, "Residual  A*X - B timing --- %10.6f sec\n", stopAll - startAll);
 }

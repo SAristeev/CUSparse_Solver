@@ -30,7 +30,7 @@ double csr_mat_norminf(int rowsA, int colsA, int nnzA,
 }
 
 
-void testFidesys(const int colsA, const double* h_X, const double* fid_X)
+void testFidesys(const int colsA, const double* h_X, const double* fid_X, FILE *log)
 {
     FILE* DIFF;
     DIFF = fopen("../output/diff.txt", "w");
@@ -42,7 +42,7 @@ void testFidesys(const int colsA, const double* h_X, const double* fid_X)
     }
     fclose(DIFF);
     DIFF = NULL;
-    printf("inf-norm of |CUSparse(X)-Fidesys(X)| =  %e\n", vec_norminf(colsA, h_difference));
+    fprintf(log, "inf-norm of |Fid(X)-CU(X)| =  %e\n", vec_norminf(colsA, h_difference));
 }
 
 

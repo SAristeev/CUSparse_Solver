@@ -34,13 +34,13 @@ void denseVectorFileOutput(char const* FileName, int rowsA, const double* h_ValA
 void linearSolverSpSV(const int rowsA, const int nnzA,
                       const int* h_RowPtrA, const int* h_ColIndA, const double* h_ValA,
                       const int rowsB, const double* h_B,
-                      const int rowsX, double* h_X);
+                      const int rowsX, double* h_X, FILE *log);
 void testResidualSpMV(const int rowsA, const int nnzA,
                       const int* h_RowPtrA, const int* h_ColIndA, const double* h_ValA,
                       const int rowsB, const double* h_B,
-                      const int rowsX, double* h_X);
+                      const int rowsX, double* h_X, FILE* log);
 double vec_norminf(int n, const double* x);
 double csr_mat_norminf(int rowsA, int colsA, int nnzA, const int* RowPtrA, const int* ColIndA, const double* ValA);
 double second(void);
-void testFidesys(const int colsA, const double* h_X, const double* fid_X);
+void testFidesys(const int colsA, const double* h_X, const double* fid_X, FILE* log);
 #endif

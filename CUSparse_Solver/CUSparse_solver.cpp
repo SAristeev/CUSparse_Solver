@@ -3,12 +3,12 @@
 void linearSolverSpSV(const int rowsA, const int nnzA,
     const int* h_RowPtrA, const int* h_ColIndA, const double* h_ValA,
     const int rowsB, const double* h_B,
-    const int colsA, double* h_X) {
+    const int colsA, double* h_X, FILE* log) {
 
     int* d_RowPtrA, * d_ColIndA;
     double* d_ValA, * d_B, *d_X;
     double alpha = 1.0;
-    double startAll, stopAll, elapsedAllTime, startSolve, stopSolve, elapsedSolveTime;
+    double startAll, stopMalloc, stopMemcpy, stopPreparations, stopSolve, stopDestroy, stopAll;
 
     startAll = second();
 
@@ -16,17 +16,23 @@ void linearSolverSpSV(const int rowsA, const int nnzA,
 // Device memory management
 //==========================================================================
 
-    CHECK_CUDA( cudaMalloc((void**) &d_RowPtrA, (rowsA + 1) * sizeof(int)) )
-    CHECK_CUDA( cudaMalloc((void**) &d_ColIndA, nnzA * sizeof(int)) )
-    CHECK_CUDA( cudaMalloc((void**) &d_ValA, nnzA * sizeof(double)) )
-    CHECK_CUDA( cudaMalloc((void**) &d_B, rowsB * sizeof(double)) )
-    CHECK_CUDA( cudaMalloc((void**) &d_X, colsA * sizeof(double)) )
+    CHECK_CUDA(cudaMalloc((void**)&d_RowPtrA, (rowsA + 1) * sizeof(int)))
+    CHECK_CUDA(cudaMalloc((void**)&d_ColIndA, nnzA * sizeof(int)))
+    CHECK_CUDA(cudaMalloc((void**)&d_ValA, nnzA * sizeof(double)))
+    CHECK_CUDA(cudaMalloc((void**)&d_B, rowsB * sizeof(double)))
+    CHECK_CUDA(cudaMalloc((void**)&d_X, colsA * sizeof(double)))
+
+    stopMalloc = second();
+    fprintf(log, "Solver CUDA malloc       --- %10.6f sec\n", stopMalloc - startAll);
 
     CHECK_CUDA( cudaMemcpy(d_RowPtrA, h_RowPtrA, (rowsA + 1) * sizeof(int), cudaMemcpyHostToDevice) )
     CHECK_CUDA( cudaMemcpy(d_ColIndA, h_ColIndA, nnzA * sizeof(int), cudaMemcpyHostToDevice) )
     CHECK_CUDA( cudaMemcpy(d_ValA, h_ValA, nnzA * sizeof(double), cudaMemcpyHostToDevice) )
     CHECK_CUDA( cudaMemcpy(d_B, h_B, rowsB * sizeof(double), cudaMemcpyHostToDevice) )
     CHECK_CUDA( cudaMemcpy(d_X, h_X, colsA * sizeof(double), cudaMemcpyHostToDevice) )
+
+    stopMemcpy = second();
+    fprintf(log, "Solver CUDA memcpy       --- %10.6f sec\n", stopMemcpy - stopMalloc);
 
 //==========================================================================
 // CUSAPRSE APIs preparation
@@ -54,7 +60,8 @@ void linearSolverSpSV(const int rowsA, const int nnzA,
 // CUSAPRSE Analysis + Solve
 //==========================================================================
 
-    startSolve = second();
+    stopPreparations = second();
+    fprintf(log, "Solver CUDA preparations --- %10.6f sec\n", stopPreparations - stopMemcpy);
 
     CHECK_CUSPARSE( cusparseSpSV_bufferSize(handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
                                             &alpha, matA, vecB, vecX, CUDA_R_64F,
@@ -70,6 +77,7 @@ void linearSolverSpSV(const int rowsA, const int nnzA,
                                        CUSPARSE_SPSV_ALG_DEFAULT, spsvDescr) )
 
     stopSolve = second();
+    fprintf(log, "Solver CUDA solve        --- %10.6f sec\n", stopSolve - stopPreparations);
 
 //==========================================================================
 // CUSAPRSE APIs destroy
@@ -83,6 +91,8 @@ void linearSolverSpSV(const int rowsA, const int nnzA,
 
     CHECK_CUDA( cudaMemcpy(h_X, d_X, colsA * sizeof(double), cudaMemcpyDeviceToHost) )
 
+    stopDestroy = second();
+    fprintf(log, "Solver CUDA destroy      --- %10.6f sec\n", stopDestroy - stopSolve);
 //==========================================================================
 // Device memory deallocation
 //==========================================================================
@@ -93,8 +103,6 @@ void linearSolverSpSV(const int rowsA, const int nnzA,
     CHECK_CUDA( cudaFree(d_B) )
     CHECK_CUDA( cudaFree(d_X) )
     stopAll = second();
-    elapsedAllTime = stopAll - startAll;
-    elapsedSolveTime = stopSolve - startSolve;
-    printf("All   CUDA timing: = %10.6f sec\n", elapsedAllTime);
-    printf("Solve CUDA timing: = %10.6f sec\n", elapsedSolveTime);
+    fprintf(log, "Solver CUDA free         --- %10.6f sec\n", stopAll - stopDestroy);
+    fprintf(log, "All Solver CUDA timing   --- %10.6f sec\n", stopAll- startAll);
 }
