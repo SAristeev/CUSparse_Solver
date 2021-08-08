@@ -12,6 +12,7 @@ double vec_norminf(int n, const double* x)
     return norminf;
 }
 
+
 double csr_mat_norminf(int rowsA, int colsA, int nnzA,
                        const int* RowPtrA, const int* ColIndA, const double* ValA){
     double norminf = 0;
@@ -72,6 +73,7 @@ double second(void)
         return (double)GetTickCount() / 1000.0;
     }
 }
+
 #elif defined(__linux__) || defined(__QNX__)
 #include <stddef.h>
 #include <sys/time.h>

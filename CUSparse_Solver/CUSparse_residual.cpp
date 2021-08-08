@@ -47,7 +47,7 @@ void testResidualSpMV(const int rowsA, const int nnzA,
     CHECK_CUSPARSE(cusparseCreateDnVec(&vecB, rowsB, d_B, CUDA_R_64F))
     // Create dense vector X
     CHECK_CUSPARSE(cusparseCreateDnVec(&vecX, colsA, d_X, CUDA_R_64F))
-    // Create opaque data structure, that holds analysis data between calls.
+    
 //==========================================================================
 // CUSAPRSE Analysis + Multiply
 //==========================================================================
@@ -74,6 +74,7 @@ void testResidualSpMV(const int rowsA, const int nnzA,
 //==========================================================================
 // Device memory deallocation
 //==========================================================================
+
     CHECK_CUDA(cudaFree(dBuffer))
     CHECK_CUDA(cudaFree(d_RowPtrA))
     CHECK_CUDA(cudaFree(d_ColIndA))
@@ -82,5 +83,5 @@ void testResidualSpMV(const int rowsA, const int nnzA,
     CHECK_CUDA(cudaFree(d_X))
     stopAll = second();
     
-    fprintf(log, "Residual  A*X - B timing --- %10.6f sec\n", stopAll - startAll);
+    //fprintf(log, "Residual  A*X - B timing --- %10.6f sec\n", stopAll - startAll);
 }

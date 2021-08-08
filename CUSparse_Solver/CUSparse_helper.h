@@ -6,6 +6,7 @@
 #ifndef __CUSPARSE_HELPER_H__
 #define __CUSPARSE_HELPER_H__
 
+#define MAX(a,b) (((a) > (b)) ? (a) : (b))
 
 #define CHECK_CUDA(func)                                                      \
 {                                                                             \
@@ -35,6 +36,15 @@ void linearSolverSpSV(const int rowsA, const int nnzA,
                       const int* h_RowPtrA, const int* h_ColIndA, const double* h_ValA,
                       const int rowsB, const double* h_B,
                       const int rowsX, double* h_X, FILE *log);
+void linearSolverBSRV2(const int rowsA, const int nnzA,
+                      const int* h_RowPtrA, const int* h_ColIndA, const double* h_ValA,
+                      const int rowsB, const double* h_B,
+                      const int rowsX, double* h_X, FILE* log);
+void linearSolverCHOL(const int rowsA, const int nnzA,
+                      const int* h_RowPtrA, const int* h_ColIndA, const double* h_ValA,
+                      const int rowsB, const double* h_B,
+                      const int rowsX, double* h_X, FILE* log);
+
 void testResidualSpMV(const int rowsA, const int nnzA,
                       const int* h_RowPtrA, const int* h_ColIndA, const double* h_ValA,
                       const int rowsB, const double* h_B,
