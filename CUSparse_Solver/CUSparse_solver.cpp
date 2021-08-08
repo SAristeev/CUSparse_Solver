@@ -216,7 +216,7 @@ void linearSolverCHOL(const int rowsA, const int nnzA,
     double alpha = 1.0;
     double startAll, stopSolve, startSolve, stopAll;
 
-    fprintf(log, "Cholesky Solver \n");
+    fprintf(log, "Cholesky-factorization Solver \n");
 
     startAll = second();
     h_Z = (double*)malloc(rowsB * sizeof(double));
@@ -337,6 +337,162 @@ void linearSolverCHOL(const int rowsA, const int nnzA,
     cusparseDestroyCsric02Info(info_M);
     cusparseDestroyCsrsv2Info(info_L);
     cusparseDestroyCsrsv2Info(info_Lt);
+    cusparseDestroy(handle);
+
+    CHECK_CUDA(cudaMemcpy(h_X, d_X, colsA * sizeof(double), cudaMemcpyDeviceToHost))
+
+//==========================================================================
+// Device memory deallocation
+//==========================================================================
+
+    CHECK_CUDA(cudaFree(d_RowPtrA))
+    CHECK_CUDA(cudaFree(d_ColIndA))
+    CHECK_CUDA(cudaFree(d_ValA))
+    CHECK_CUDA(cudaFree(d_B))
+    CHECK_CUDA(cudaFree(d_X))
+
+    stopAll = second();
+    fprintf(log, "All Solver CUDA timing   --- %10.6f sec\n", stopAll - startAll);
+}
+
+void linearSolverLU(const int rowsA, const int nnzA,
+    const int* h_RowPtrA, const int* h_ColIndA, const double* h_ValA,
+    const int rowsB, const double* h_B,
+    const int colsA, double* h_X, FILE* log) {
+
+    int* d_RowPtrA, * d_ColIndA;
+    double* d_ValA, * d_B, * d_X, * d_Z, * h_Z = NULL;
+    double alpha = 1.0;
+    double startAll, stopSolve, startSolve, stopAll;
+
+    fprintf(log, "LU-factorization Solver \n");
+
+    startAll = second();
+    h_Z = (double*)malloc(rowsB * sizeof(double));
+
+//==========================================================================
+// Device memory management
+//==========================================================================
+
+    CHECK_CUDA(cudaMalloc((void**)&d_RowPtrA, (rowsA + 1) * sizeof(int)))
+    CHECK_CUDA(cudaMalloc((void**)&d_ColIndA, nnzA * sizeof(int)))
+    CHECK_CUDA(cudaMalloc((void**)&d_ValA, nnzA * sizeof(double)))
+    CHECK_CUDA(cudaMalloc((void**)&d_B, rowsB * sizeof(double)))
+    CHECK_CUDA(cudaMalloc((void**)&d_X, colsA * sizeof(double)))
+    CHECK_CUDA(cudaMalloc((void**)&d_Z, rowsB * sizeof(double)))
+
+    CHECK_CUDA(cudaMemcpy(d_RowPtrA, h_RowPtrA, (rowsA + 1) * sizeof(int), cudaMemcpyHostToDevice))
+    CHECK_CUDA(cudaMemcpy(d_ColIndA, h_ColIndA, nnzA * sizeof(int), cudaMemcpyHostToDevice))
+    CHECK_CUDA(cudaMemcpy(d_ValA, h_ValA, nnzA * sizeof(double), cudaMemcpyHostToDevice))
+    CHECK_CUDA(cudaMemcpy(d_B, h_B, rowsB * sizeof(double), cudaMemcpyHostToDevice))
+    CHECK_CUDA(cudaMemcpy(d_X, h_X, colsA * sizeof(double), cudaMemcpyHostToDevice))
+    CHECK_CUDA(cudaMemcpy(d_Z, h_Z, rowsB * sizeof(double), cudaMemcpyHostToDevice))
+
+//==========================================================================
+// CUSAPRSE APIs preparation
+//==========================================================================
+
+    cusparseHandle_t handle = NULL;
+    cusparseMatDescr_t descr_M = 0, descr_L = 0, descr_U = 0;
+    csrilu02Info_t info_M = 0;
+    csrsv2Info_t info_L = 0, info_U = 0;
+    int pBufferSize_M, pBufferSize_L, pBufferSize_U, pBufferSize;
+    void* pBuffer = 0;
+    int structural_zero, numerical_zero;
+
+    const cusparseSolvePolicy_t policy_M = CUSPARSE_SOLVE_POLICY_NO_LEVEL;
+    const cusparseSolvePolicy_t policy_L = CUSPARSE_SOLVE_POLICY_NO_LEVEL;
+    const cusparseSolvePolicy_t policy_U = CUSPARSE_SOLVE_POLICY_USE_LEVEL;
+    const cusparseOperation_t trans_L = CUSPARSE_OPERATION_NON_TRANSPOSE;
+    const cusparseOperation_t trans_U = CUSPARSE_OPERATION_NON_TRANSPOSE;
+
+    CHECK_CUSPARSE(cusparseCreate(&handle))
+
+    CHECK_CUSPARSE(cusparseCreateMatDescr(&descr_M))
+    CHECK_CUSPARSE(cusparseSetMatIndexBase(descr_M, CUSPARSE_INDEX_BASE_ZERO))
+    CHECK_CUSPARSE(cusparseSetMatType(descr_M, CUSPARSE_MATRIX_TYPE_GENERAL))
+
+    CHECK_CUSPARSE(cusparseCreateMatDescr(&descr_L))
+    CHECK_CUSPARSE(cusparseSetMatIndexBase(descr_L, CUSPARSE_INDEX_BASE_ZERO))
+    CHECK_CUSPARSE(cusparseSetMatType(descr_L, CUSPARSE_MATRIX_TYPE_GENERAL))
+    CHECK_CUSPARSE(cusparseSetMatFillMode(descr_L, CUSPARSE_FILL_MODE_LOWER))
+    CHECK_CUSPARSE(cusparseSetMatDiagType(descr_L, CUSPARSE_DIAG_TYPE_UNIT))
+
+    CHECK_CUSPARSE(cusparseCreateMatDescr(&descr_U))
+    CHECK_CUSPARSE(cusparseSetMatIndexBase(descr_U, CUSPARSE_INDEX_BASE_ZERO))
+    CHECK_CUSPARSE(cusparseSetMatType(descr_U, CUSPARSE_MATRIX_TYPE_GENERAL))
+    CHECK_CUSPARSE(cusparseSetMatFillMode(descr_U, CUSPARSE_FILL_MODE_UPPER))
+    CHECK_CUSPARSE(cusparseSetMatDiagType(descr_U, CUSPARSE_DIAG_TYPE_NON_UNIT))
+
+    CHECK_CUSPARSE(cusparseCreateCsrilu02Info(&info_M))
+    CHECK_CUSPARSE(cusparseCreateCsrsv2Info(&info_L))
+    CHECK_CUSPARSE(cusparseCreateCsrsv2Info(&info_U))
+
+//==========================================================================
+// CUSAPRSE Analysis + Solve
+//==========================================================================
+
+        startSolve = second();
+    CHECK_CUSPARSE(cusparseDcsrilu02_bufferSize(handle, rowsA, nnzA,
+                                                descr_M, d_ValA, d_RowPtrA, d_ColIndA, 
+                                                info_M, &pBufferSize_M))
+    CHECK_CUSPARSE(cusparseDcsrsv2_bufferSize(handle, trans_L, rowsA, nnzA,
+                                              descr_L, d_ValA, d_RowPtrA, d_ColIndA,
+                                              info_L, &pBufferSize_L))
+    CHECK_CUSPARSE(cusparseDcsrsv2_bufferSize(handle, trans_U, rowsA, nnzA,
+                                              descr_U, d_ValA, d_RowPtrA, d_ColIndA,
+                                              info_U, &pBufferSize_U))
+
+    pBufferSize = MAX(pBufferSize_M, MAX(pBufferSize_L, pBufferSize_U));
+
+    CHECK_CUDA(cudaMalloc((void**)&pBuffer, pBufferSize))
+
+    CHECK_CUSPARSE(cusparseDcsrilu02_analysis(handle, rowsA, nnzA, descr_M,
+                                              d_ValA, d_RowPtrA, d_ColIndA, info_M,
+                                              policy_M, pBuffer))
+
+    int status = cusparseXcsrilu02_zeroPivot(handle, info_M, &structural_zero);
+
+    if (CUSPARSE_STATUS_ZERO_PIVOT == status) {
+        fprintf(log, "A(%d,%d) is missing\n", structural_zero, structural_zero);
+    }
+
+    CHECK_CUSPARSE(cusparseDcsrsv2_analysis(handle, trans_L, rowsA, nnzA, descr_L,
+                                            d_ValA, d_RowPtrA, d_ColIndA,
+                                            info_L, policy_L, pBuffer))
+    CHECK_CUSPARSE(cusparseDcsrsv2_analysis(handle, trans_U, rowsA, nnzA, descr_U,
+                                            d_ValA, d_RowPtrA, d_ColIndA,
+                                            info_U, policy_U, pBuffer))
+    CHECK_CUSPARSE(cusparseDcsrilu02(handle, rowsA, nnzA, descr_M,
+                                     d_ValA, d_RowPtrA, d_ColIndA,
+                                     info_M, policy_M, pBuffer))
+
+    status = cusparseXcsrilu02_zeroPivot(handle, info_M, &numerical_zero);
+
+    if (CUSPARSE_STATUS_ZERO_PIVOT == status) {
+        fprintf(log, "L(%d,%d) is zero\n", numerical_zero, numerical_zero);
+    }
+
+    CHECK_CUSPARSE(cusparseDcsrsv2_solve(handle, trans_L, rowsA, nnzA, &alpha, descr_L,
+                                         d_ValA, d_RowPtrA, d_ColIndA, info_L,
+                                         d_B, d_Z, policy_L, pBuffer))
+    CHECK_CUSPARSE(cusparseDcsrsv2_solve(handle, trans_U, rowsA, nnzA, &alpha, descr_U,
+                                         d_ValA, d_RowPtrA, d_ColIndA, info_U,
+                                         d_Z, d_X, policy_U, pBuffer))
+
+    stopSolve = second();
+    fprintf(log, "Solver CUDA solve        --- %10.6f sec\n", stopSolve - startSolve);
+
+//==========================================================================
+// CUSAPRSE APIs destroy
+//==========================================================================
+
+    cudaFree(pBuffer);
+    cusparseDestroyMatDescr(descr_M);
+    cusparseDestroyMatDescr(descr_L);
+    cusparseDestroyCsrilu02Info(info_M);
+    cusparseDestroyCsrsv2Info(info_L);
+    cusparseDestroyCsrsv2Info(info_U);
     cusparseDestroy(handle);
 
     CHECK_CUDA(cudaMemcpy(h_X, d_X, colsA * sizeof(double), cudaMemcpyDeviceToHost))

@@ -107,6 +107,29 @@ int main(){
     h_X = NULL;
     h_R = NULL;
 
+//==========================================================================
+// Fourth Solver
+//==========================================================================
+
+    h_X = (double*)malloc(sizeof(double) * colsA);
+    h_R = (double*)malloc(sizeof(double) * colsA);
+
+    linearSolverLU(rowsA, nnzA, h_RowPtrA, h_ColIndA, h_ValA,
+        rowsB, h_B,
+        colsA, h_X, log);
+
+    fprintf(log, "inf-norm of |CUSparse(X)|  =  %e\n", vec_norminf(colsA, h_X));
+    denseVectorFileOutput("../output/X_LU.vec", colsA, h_X);
+    testFidesys(colsA, h_X, fid_X, log);
+    testResidualSpMV(rowsA, nnzA, h_RowPtrA, h_ColIndA, h_ValA,
+        rowsB, h_B,
+        colsA, h_X, log);
+    fprintf(log, "inf-norm of |A*X - B|      =  %e\n", vec_norminf(colsA, h_X));
+    fprintf(log, "========================= \n");
+    free(h_X);
+    free(h_R);
+    h_X = NULL;
+    h_R = NULL;
 
     free(h_RowPtrA);
     free(h_ColIndA);
